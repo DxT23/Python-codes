@@ -1,0 +1,11 @@
+def analyze_csv(file_path, column):
+    import pandas as pd
+
+    df = pd.read_csv(file_path)
+    df = df.dropna(subset=[column])
+
+    mean_val = df[column].mean()
+    median_val = df[column].median()
+    freq = df[column].value_counts()
+
+    return mean_val, median_val, freq
