@@ -1,0 +1,235 @@
+import random
+import string
+import time
+from statistics import mean, stdev
+class DynamicHashTable:
+    def __init__(self, n=100, malpha=500, augfact=2.0):
+        self.num_buckets = n
+        self.max_alpha = malpha
+        self.aug_factor = augfact
+        self.num_items = 0
+        self.buckets = [[]for _ in range(n)]
+
+    def _resize(self):
+        old_buckets = self.buckets
+        self.num_buckets = int(self.num_buckets * self.aug_factor)
+        self.buckets = [[]for _ in range(self.num_buckets)]
+        self.num_items = 0
+        
+        for bucket in old_buckets:
+            for key,value in bucket:
+                self.insert(key, value, no_resize = True)
+        
+    def _hash(self, s):
+        hash_value = 0
+        for char in s:
+            hash_value = (hash_value * 31 + ord(char)) % self.num_buckets
+        return hash_value
+
+    def _get_inx_in_bucket(self, bucket, key):
+        low = 0
+        high = len(bucket) - 1
+        while low <= high:
+            mid = (low + high) // 2
+            if bucket[mid][0] == key:
+                return mid
+            elif bucket[mid][0] > key:
+                high = mid - 1
+            else:
+                low = mid + 1
+        return None
+            
+    def insert(self, key, value, no_resize=False):
+        inx = None
+        hash_index = self._hash(key)
+        bucket = self.buckets[hash_index]
+        low = 0
+        high = len(bucket) - 1
+        while low <= high:
+            mid = (low + high) // 2
+            if bucket[mid][0] == key:
+                inx = mid
+                break
+            elif bucket[mid][0] > key:
+                high = mid - 1
+            else:
+                low = mid + 1
+        if inx is not None:
+            bucket[inx] = (key, value)
+        else:
+            bucket.insert(low,(key,value))
+            self.num_items += 1
+        if not no_resize and self.num_items> self.max_alpha:
+            self._resize()
+            
+    def search(self, key):
+        hash_index = self._hash(key)
+        bucket = self.buckets[hash_index]
+        low = 0
+        high = len(bucket)-1
+        while low<=high:
+            mid = (low + high)//2
+            if bucket[mid][0] == key:
+                return bucket[mid][1]
+            elif bucket[mid][0] > key:
+                high = mid - 1
+            else:
+                low = mid + 1
+        return None
+                
+    def __str__(self):
+        result = ""
+        for i, bucket in enumerate(self.buckets):
+            if bucket:
+                result += f"bucket {i}: {bucket}\n" 
+        return result
+        
+class NaiveHashTable:
+    def __init__(self, n=100):
+        self.num_buckets = n
+        self.buckets = []
+        for n_buckets in range(self.num_buckets):
+            self.buckets.append([]) # create a list of empty buckets, each of which is a list
+
+    def simple_string_hash(self, s):
+        hash_value = 0
+        for char in s:
+            hash_value = (hash_value * 31 + ord(char)) % self.num_buckets
+        return hash_value
+
+    def insert(self, key, value):
+        # this function should check if the key is already in the hash table
+        # if so - update the value
+        # if not, add the key and value
+        
+        hash_index = self.simple_string_hash(key)
+        bucket = self.buckets[hash_index]
+        
+        # initialize variables for the while loop
+        found = False
+        index = 0
+        
+        # iterate through the bucket
+        while index < len(bucket) and not found:
+            k, _ = bucket[index]
+            if k == key:
+                found = True  # key found, update the value
+                bucket[index] = (key, value)
+            index += 1
+        
+        if not found:  # key not found, append the new key-value pair
+            bucket.append((key, value))
+                        
+    def search(self, key):
+        hash_index = self.simple_string_hash(key)
+        bucket = self.buckets[hash_index]
+        for k, v in bucket:
+            if k == key:
+                return v
+        return None  # key not found
+
+    def remove(self, key): # bonus
+        hash_index = self.simple_string_hash(key)
+        bucket = self.buckets[hash_index]
+        for i, (k, _) in enumerate(bucket):
+            if k == key:
+                del bucket[i]  # remove the key-value pair if found
+                return
+
+# Load CSV and Prepare Data
+initial_data = []
+additional_data = []
+with open("user_activity_data.csv", "r", encoding="utf-8") as f:
+    lines = f.readlines()[1:]  # skip header
+    for i, line in enumerate(lines):
+        user_id, uploads = line.strip().split(",")
+        record = (user_id, int(uploads))
+        if i < 20000:
+            initial_data.append(record)
+        else:
+            additional_data.append(record)
+
+combined_usernames = [key for key, _ in initial_data + additional_data]
+
+# Experiment Setup
+
+NUM_EXPERIMENTS = 10
+NUM_INITIAL_INSERTS = 2000
+NUM_ADDITIONAL_INSERTS = 1000
+NUM_OPS = NUM_ADDITIONAL_INSERTS
+
+# Adjusting for combined data
+initial_data = initial_data[:NUM_INITIAL_INSERTS]
+additional_data = additional_data[:NUM_ADDITIONAL_INSERTS]
+combined_usernames = [x[0] for x in initial_data + additional_data]
+
+def generate_operations():
+    ops = []
+    for key, value in additional_data:
+        ops.append(('insert', key, value))
+    for _ in range(NUM_OPS):
+        key = random.choice(combined_usernames)
+        ops.append(('search', key, None))
+    random.shuffle(ops)
+    return ops
+
+def benchmark(hashtable_class, operations, initial_data):
+    ht = hashtable_class()
+    for key, value in initial_data:
+        ht.insert(key, value)
+    start_time = time.time()
+    for op, key, value in operations:
+        if op == 'insert':
+            ht.insert(key, value)
+        elif op == 'search':
+            ht.search(key)
+    end_time = time.time()
+    return end_time - start_time
+
+def test():
+    dyn_times = []
+    naive_times = []
+
+    for _ in range(NUM_EXPERIMENTS):
+        ops = generate_operations()
+        dyn_time = benchmark(DynamicHashTable, ops, initial_data)
+        naive_time = benchmark(NaiveHashTable, ops, initial_data)
+        dyn_times.append(dyn_time)
+        naive_times.append(naive_time)
+
+    print("DynamicHashTable:")
+    print(f"  Mean: {mean(dyn_times):.4f} sec")
+    print(f"  Std:  {stdev(dyn_times):.4f} sec")
+    print("NaiveHashTable:")
+    print(f"  Mean: {mean(naive_times):.4f} sec")
+    print(f"  Std:  {stdev(naive_times):.4f} sec")
+
+test()
+
+def test_dynamic_hash_table():
+    dht = DynamicHashTable(n=5, malpha=500, augfact=2.0)
+    dht.insert("apple", 100)
+    assert dht.search("apple") == 100
+    dht.insert("apple", 999)
+    assert dht.search("apple") == 999
+
+    # Checking sorted keys after insertion
+    for bucket in dht.buckets:
+        keys = [key for key, _ in bucket]
+        assert keys == sorted(keys)
+
+    for i in range(1000):
+        dht.insert(f"user_{i}", i)
+
+    assert dht.search("apple") == 999
+    for i in range(1000):
+        assert dht.search(f"user_{i}") == i
+
+    for bucket in dht.buckets:
+        keys = [key for key, _ in bucket]
+        assert keys == sorted(keys)
+
+    print(f"bucket with the longest length: {max(len(bucket) for bucket in dht.buckets)}")
+    print("All DynamicHashTable assertions passed!")
+
+test_dynamic_hash_table()
